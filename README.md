@@ -94,6 +94,11 @@ A hop is only given up on after several consecutive fully-silent hops
 (default 5), since a single unresponsive router does not mean the path
 ends there — subsequent hops frequently still reply.
 
+Every probed hop gets a node in the vault, whether or not it answered — a
+silent hop still occupies a real position in the path, so it's rendered as
+an "Unresponsive hop N" placeholder linking its known neighbours, rather
+than disappearing and leaving the chain looking shorter than it really is.
+
 ## Requirements
 
 - Windows, run as Administrator (raw ICMP socket access).

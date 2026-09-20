@@ -1,6 +1,13 @@
 """Renders traceroute results as a plain folder of markdown notes, wikilinked
 so Obsidian's built-in Graph View draws the topology with no plugins or
 vault configuration required.
+
+Every hop probed during a trace gets a node, whether or not it responded:
+an unresponsive hop still occupies a real position in the path (some hop
+count corresponds to it — a router simply chose not to answer), so it's
+represented as a distinct placeholder node rather than silently vanishing
+from the chain. That keeps the full hop count visible in the graph instead
+of collapsing runs of silent hops into gaps between the responsive ones.
 """
 
 from __future__ import annotations
@@ -17,19 +24,14 @@ _SANITIZE_RE = re.compile(r'[\\/:*?"<>|]')
 
 
 @dataclass
-class _EdgeContext:
-    target: str
-    skipped: int = 0
-
-
-@dataclass
 class _NodeRecord:
     ip: str
+    identified: bool = True  # False for placeholder "no response" hops
     hostname: str = ""
     private: bool = False
     targets: set[str] = field(default_factory=set)
     is_destination: set[str] = field(default_factory=set)
-    edges: dict[str, list[_EdgeContext]] = field(default_factory=dict)
+    edges: dict[str, list[str]] = field(default_factory=dict)  # neighbour ip -> [target, ...]
 
 
 @dataclass
@@ -37,7 +39,7 @@ class _ChainEntry:
     ip: str
     ttl: int
     rtt_ms: float
-    skipped_before: int
+    responsive: bool
 
 
 def build(results: list[Result], out_dir: str) -> None:
@@ -50,23 +52,24 @@ def build(results: list[Result], out_dir: str) -> None:
 
     nodes: dict[str, _NodeRecord] = {}
 
-    def get_node(ip: str) -> _NodeRecord:
-        if ip not in nodes:
-            nodes[ip] = _NodeRecord(ip=ip, hostname=reverse_lookup(ip), private=is_private(ip))
-        return nodes[ip]
+    def get_node(entry: _ChainEntry) -> _NodeRecord:
+        if entry.ip not in nodes:
+            if entry.responsive:
+                nodes[entry.ip] = _NodeRecord(ip=entry.ip, hostname=reverse_lookup(entry.ip), private=is_private(entry.ip))
+            else:
+                nodes[entry.ip] = _NodeRecord(ip=entry.ip, identified=False)
+        return nodes[entry.ip]
 
     for result in results:
         chain = _build_chain(result)
         for i, entry in enumerate(chain):
-            node = get_node(entry.ip)
+            node = get_node(entry)
             node.targets.add(result.target)
-            if result.reached and i == len(chain) - 1 and entry.ip == result.resolved_ip:
+            if result.reached and i == len(chain) - 1 and entry.responsive and entry.ip == result.resolved_ip:
                 node.is_destination.add(result.target)
             if i + 1 < len(chain):
                 nxt = chain[i + 1]
-                node.edges.setdefault(nxt.ip, []).append(
-                    _EdgeContext(target=result.target, skipped=nxt.skipped_before)
-                )
+                node.edges.setdefault(nxt.ip, []).append(result.target)
 
     for result in results:
         _write_target_note(targets_dir, result)
@@ -91,6 +94,10 @@ def _target_link(target: str) -> str:
     return f"[[{_target_title(target)}]]"
 
 
+def _placeholder_id(target: str, ttl: int) -> str:
+    return f"Unresponsive hop {ttl} (tracing {target})"
+
+
 def _best_responder(hop: Hop) -> tuple[str, float] | None:
     """Pick the IP that answered the most probes at this hop (majority vote
     across ICMP/TCP probes) and return its average RTT in milliseconds."""
@@ -111,19 +118,17 @@ def _best_responder(hop: Hop) -> tuple[str, float] | None:
 
 
 def _build_chain(result: Result) -> list[_ChainEntry]:
-    """Reduce a Result's hops to the ones that actually responded, skipping
-    (but counting) silent hops so the graph links nearest-known-node to
-    nearest-known-node rather than including meaningless placeholders."""
+    """Turn every probed hop into a chain entry, in TTL order. Hops with a
+    responder get their real IP; fully silent hops get a distinct
+    placeholder id so the full path is still represented in the graph."""
     chain: list[_ChainEntry] = []
-    skipped = 0
     for hop in result.hops:
         best = _best_responder(hop)
         if best is None:
-            skipped += 1
-            continue
-        ip, rtt_ms = best
-        chain.append(_ChainEntry(ip=ip, ttl=hop.ttl, rtt_ms=rtt_ms, skipped_before=skipped))
-        skipped = 0
+            chain.append(_ChainEntry(ip=_placeholder_id(result.target, hop.ttl), ttl=hop.ttl, rtt_ms=0.0, responsive=False))
+        else:
+            ip, rtt_ms = best
+            chain.append(_ChainEntry(ip=ip, ttl=hop.ttl, rtt_ms=rtt_ms, responsive=True))
     return chain
 
 
@@ -140,20 +145,21 @@ def _write_target_note(dir_: Path, result: Result) -> None:
         lines.append("## Path")
         lines.append("")
         for i, entry in enumerate(chain):
-            note = ""
-            if entry.skipped_before:
-                note = f" ({entry.skipped_before} unresponsive hop(s) before this)"
-            if i == len(chain) - 1 and result.reached:
-                note += " — destination"
-            lines.append(f"{i + 1}. {_node_link(entry.ip)} — {entry.rtt_ms:.1f}ms{note}")
+            if entry.responsive:
+                detail = f"{entry.rtt_ms:.1f}ms"
+                if i == len(chain) - 1 and result.reached:
+                    detail += " — destination"
+            else:
+                detail = "no response"
+            lines.append(f"{i + 1}. {_node_link(entry.ip)} — {detail}")
         lines.append("")
 
     (dir_ / f"{_target_title(result.target)}.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def _edge_line(arrow: str, neighbour_ip: str, ctx: _EdgeContext) -> str:
-    skip = f", {ctx.skipped} unresponsive hop(s) skipped" if ctx.skipped else ""
-    return f"- {arrow} {_node_link(neighbour_ip)} (via {_target_link(ctx.target)}{skip})"
+def _edge_line(arrow: str, neighbour_ip: str, targets: list[str]) -> str:
+    via = ", ".join(_target_link(t) for t in sorted(set(targets)))
+    return f"- {arrow} {_node_link(neighbour_ip)} (via {via})"
 
 
 def _sorted_target_links(targets: set[str]) -> str:
@@ -162,9 +168,12 @@ def _sorted_target_links(targets: set[str]) -> str:
 
 def _write_node_note(dir_: Path, node: _NodeRecord, all_nodes: dict[str, _NodeRecord]) -> None:
     lines = [f"# {node.ip}", ""]
-    if node.hostname:
-        lines += [f"**Hostname:** {node.hostname}", ""]
-    lines += [f"**Type:** {'Internal (private address space)' if node.private else 'External'}", ""]
+    if not node.identified:
+        lines += ["**Type:** Unidentified — no response at this hop", ""]
+    else:
+        if node.hostname:
+            lines += [f"**Hostname:** {node.hostname}", ""]
+        lines += [f"**Type:** {'Internal (private address space)' if node.private else 'External'}", ""]
 
     if node.is_destination:
         lines += [f"**Destination for:** {_sorted_target_links(node.is_destination)}", ""]
@@ -172,15 +181,12 @@ def _write_node_note(dir_: Path, node: _NodeRecord, all_nodes: dict[str, _NodeRe
         lines += [f"**Seen as a hop while tracing:** {_sorted_target_links(node.targets)}", ""]
 
     incoming = [
-        _edge_line("←", other_ip, ctx)
+        _edge_line("←", other_ip, targets)
         for other_ip, other in all_nodes.items()
-        for ctx in other.edges.get(node.ip, [])
+        for targets in [other.edges.get(node.ip)]
+        if targets
     ]
-    outgoing = [
-        _edge_line("→", neighbour_ip, ctx)
-        for neighbour_ip, contexts in node.edges.items()
-        for ctx in contexts
-    ]
+    outgoing = [_edge_line("→", neighbour_ip, targets) for neighbour_ip, targets in node.edges.items()]
 
     if incoming or outgoing:
         lines.append("## Connections")
@@ -210,6 +216,8 @@ def _write_home_note(out: Path, results: list[Result], nodes: dict[str, _NodeRec
         label = _node_link(ip)
         if node.hostname:
             label += f" ({node.hostname})"
+        elif not node.identified:
+            label += " (no response)"
         lines.append(f"- {label}")
 
     (out / "Home.md").write_text("\n".join(lines), encoding="utf-8")
