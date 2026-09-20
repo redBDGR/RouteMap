@@ -1,0 +1,7 @@
+# One target per line — IP address or hostname. Lines starting with # are ignored.
+#
+# Examples:
+# 10.10.0.1
+# 192.168.1.254
+# fileserver.contoso.local
+# 8.8.8.8
