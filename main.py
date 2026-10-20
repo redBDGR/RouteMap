@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 # Convert target IP to  binary representation (demonstration purposes only)
 # Conduct bgp.he.de IP looking for each hop/node
 
-target = "18.155.229.82"
+target = "14.200.195.182"
 maxTTL = 30
 debugOutput = False
 
@@ -19,6 +19,14 @@ def is_ip(value):
         return True
     except ValueError:
         return False
+
+# Scrape BGP.he.de IP lookup page for WAN IP address/subnet owner
+def lookup_wansubnet_owner(target):
+    try:
+        soup = BeautifulSoup(requests.get(f"https://bgp.he.net/ip/{target}").text, features="lxml")
+        return soup.tbody.find_all('td')[2].text
+    except Exception as e:
+        return None
     
 if __name__ == "__main__":
     print("")
@@ -28,17 +36,16 @@ if __name__ == "__main__":
         print(gethostbyaddr(target))
 
         # Print binary representation
-        binaryRep = ""
+        # Constructs a list of 4x 8-bit octects (32-bit IPv4 address split)
+        binaryRep = []
         for i in target.split(sep='.'):
-            binaryRep += f"{int(i):08b}."
+            binaryRep.append(f"{int(i):08b}")
 
-        print(f"Target IP binary representation (8-bit): {binaryRep}")
+        # Rejoins octects and adds a . inbetween to visualise the data easier
+        print(f"Target IP binary representation (8-bit): {'.'.join(binaryRep)}")
 
-        try:
-            soup = BeautifulSoup(requests.get(f"https://bgp.he.net/ip/{target}").text, features="lxml")
-            print(f"WAN IP subnet owned by: {soup.tbody.find_all('td')[2].text}")
-        except Exception as e:
-            print(e)
+        # Conducts WAN IP subnet owner lookup using BGP.he.de IP web page scape
+        print(f"WAN IP subnet owned by: {lookup_wansubnet_owner(target=target)}")
 
     else:
         print(gethostbyname(target))
@@ -76,10 +83,13 @@ if __name__ == "__main__":
         src = reply.fields["src"]
         type = reply[ICMP].type
 
+        # Attempt WAN subnet owner resolution
         srcExpansion = ""
         try:
             if (not ipaddress.ip_address(src).is_private):
-                srcExpansion = f" | {gethostbyaddr(src)}"
+                owner = lookup_wansubnet_owner(src)
+                if owner != None:
+                    srcExpansion = f" | {owner}"
         except:
             srcExpansion = ""
 
