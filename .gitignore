@@ -1,9 +1,0 @@
-/vault/
-*.exe
-__pycache__/
-*.pyc
-/build/
-/dist/
-.venv/
-.DS_Store
-.claude/
