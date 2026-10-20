@@ -2,6 +2,8 @@ from scapy.all import *
 from scapy.layers.inet import *
 from socket import *
 import ipaddress
+import requests
+from bs4 import BeautifulSoup
 
 # TO DO
 # Convert target IP to  binary representation (demonstration purposes only)
@@ -24,6 +26,20 @@ if __name__ == "__main__":
 
     if is_ip(target):
         print(gethostbyaddr(target))
+
+        # Print binary representation
+        binaryRep = ""
+        for i in target.split(sep='.'):
+            binaryRep += f"{int(i):08b}."
+
+        print(f"Target IP binary representation (8-bit): {binaryRep}")
+
+        try:
+            soup = BeautifulSoup(requests.get(f"https://bgp.he.net/ip/{target}").text, features="lxml")
+            print(f"WAN IP subnet owned by: {soup.tbody.find_all('td')[2].text}")
+        except Exception as e:
+            print(e)
+
     else:
         print(gethostbyname(target))
 
