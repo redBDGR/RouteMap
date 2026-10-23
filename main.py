@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 # Convert target IP to  binary representation (demonstration purposes only)
 # Conduct bgp.he.de IP looking for each hop/node
 
-target = "14.200.195.182"
+target = "192.168.10.121"
 maxTTL = 30
 debugOutput = False
 
@@ -27,8 +27,8 @@ def lookup_wansubnet_owner(target):
         return soup.tbody.find_all('td')[2].text
     except Exception as e:
         return None
-    
-if __name__ == "__main__":
+
+def main():
     print("")
     print(f"Tracing route to {target}")
 
@@ -45,13 +45,14 @@ if __name__ == "__main__":
         print(f"Target IP binary representation (8-bit): {'.'.join(binaryRep)}")
 
         # Conducts WAN IP subnet owner lookup using BGP.he.de IP web page scape
-        print(f"WAN IP subnet owned by: {lookup_wansubnet_owner(target=target)}")
+        print(f"WAN IP owned by: {lookup_wansubnet_owner(target=target)}")
 
     else:
         print(gethostbyname(target))
 
     print()
     print("---------------! ICMP TRACEROUTE !-----------------")
+    print()
 
     for i in range(0, maxTTL):
 
@@ -79,7 +80,7 @@ if __name__ == "__main__":
             break
 
         if reply is None:
-            print(f"HOP: {i} | * (NO RESPNOSE)")
+            print(f"HOP: {i} | * (NO RESPNOSE) *")
             continue
 
         src = reply.fields["src"]
@@ -99,9 +100,13 @@ if __name__ == "__main__":
         print (f"HOP: {i} | SRC: {src} {srcExpansion} | TYPE: {type}")
 
         if (type == 0):
+            print()
             print("---------------------------------------------------")
             print()
             break
+    
+if __name__ == "__main__":
+    main()
 
     # List packet variables/data
     #ls(packet)
