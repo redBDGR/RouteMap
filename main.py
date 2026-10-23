@@ -26,8 +26,8 @@ def lookup_wansubnet_owner(target):
         return soup.tbody.find_all('td')[2].text
     except Exception as e:
         return None
-    
-if __name__ == "__main__":
+
+def main():
     print("")
     print(f"! Tracing route to {target} !")
 
@@ -50,15 +50,16 @@ if __name__ == "__main__":
         print(f"Target IP binary representation (8-bit): {'.'.join(binaryRep)}")
 
         # Conducts WAN IP subnet owner lookup using BGP.he.de IP web page scape
-        print(f"WAN IP subnet owned by: {lookup_wansubnet_owner(target=target)}")
+        print(f"WAN IP owned by: {lookup_wansubnet_owner(target=target)}")
 
     else:
         print(gethostbyname(target))
 
     print()
     print("---------------! ICMP TRACEROUTE !-----------------")
+    print()
 
-    for i in range(1, maxTTL):
+    for i in range(0, maxTTL):
 
         # Construct UDP packets
         # Packets are sent with increasing TTLs.
@@ -68,9 +69,11 @@ if __name__ == "__main__":
         pac = IP(dst=target, ttl=i) / ICMP()
 
         # Debug packet contents if required
-        if debugOutput:
-            if i == 1:
+        if i == 0:
+            if debugOutput:
                 pac.show()
+            print (f"HOP: {i} | SRC: {pac.src} | TYPE: 11")
+            continue
 
         # Try to send packet and recieve response
         try:
@@ -82,7 +85,7 @@ if __name__ == "__main__":
             break
 
         if reply is None:
-            print(f"HOP: {i} | * (NO RESPNOSE)")
+            print(f"HOP: {i} | * (NO RESPNOSE) *")
             continue
 
         src = reply.fields["src"]
@@ -102,9 +105,13 @@ if __name__ == "__main__":
         print (f"HOP: {i} | SRC: {src} {srcExpansion} | TYPE: {type}")
 
         if (type == 0):
+            print()
             print("---------------------------------------------------")
             print()
             break
+    
+if __name__ == "__main__":
+    main()
 
     # List packet variables/data
     #ls(packet)
