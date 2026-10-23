@@ -53,7 +53,7 @@ if __name__ == "__main__":
     print()
     print("---------------! ICMP TRACEROUTE !-----------------")
 
-    for i in range(1, maxTTL):
+    for i in range(0, maxTTL):
 
         # Construct UDP packets
         # Packets are sent with increasing TTLs.
@@ -63,9 +63,11 @@ if __name__ == "__main__":
         pac = IP(dst=target, ttl=i) / ICMP()
 
         # Debug packet contents if required
-        if debugOutput:
-            if i == 1:
+        if i == 0:
+            if debugOutput:
                 pac.show()
+            print (f"HOP: {i} | SRC: {pac.src} | TYPE: 11")
+            continue
 
         # Try to send packet and recieve response
         try:
