@@ -159,6 +159,7 @@ def write_obsidian_output(hops):
                 writeString = f"Upstream: [[{upstreamEndpoint.ip} ({upstreamEndpoint.subnetOwner})]]"
 
                 # Check if upstream has already been written to this file before
+                file.seek(0)
                 if writeString not in file.read():
                     file.write(f"{writeString}\n")
 
@@ -166,6 +167,7 @@ def write_obsidian_output(hops):
                 writeString = f"Downstream: [[{downstreamEndpoint.ip} ({downstreamEndpoint.subnetOwner})]]"
 
                 # Check if downstream has already been written to this file before
+                file.seek(0)
                 if writeString not in file.read():
                     file.write(f"{writeString}\n")    
 
