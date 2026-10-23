@@ -5,14 +5,16 @@ import ipaddress
 import requests
 from bs4 import BeautifulSoup
 from pathlib import Path
+import sys
 
 # TO DO
 # Create an Obsidian vault directory of all hops to visually display the route process and routing links
 
-target = "65.9.142.57"
+defaultTarget = "59.154.68.146"
 maxTTL = 50
 debugOutput = False
 
+# Validates if a variable is an IP
 def is_ip(value):
     try:
         ipaddress.ip_address(value)
@@ -28,6 +30,7 @@ def lookup_wansubnet_owner(target):
     except Exception as e:
         return None
 
+# Conducts initial host/IP lookups and prints to console
 def print_host_information(target):
     try:
         if is_ip(target):
@@ -52,15 +55,21 @@ def print_host_information(target):
 
     return
 
+# Performs a traceroute, returns a list of Endpoint objects
 def execute_traceroute(target):
     print()
     print("---------------! ICMP TRACEROUTE !-----------------")
     print()
 
     endpointList = []
+    failedHopIncrement = 0
 
     for i in range(0, maxTTL):
 
+        # If max number of failed hops has been reached, cancel the scan
+        if failedHopIncrement == 10:
+            break
+        
         # Construct UDP packets
         # Packets are sent with increasing TTLs.
         # As nodes recieve the packet, they reduce the TTL by 1.
@@ -86,7 +95,11 @@ def execute_traceroute(target):
 
         if reply is None:
             print(f"HOP: {i} | * (NO RESPNOSE) *")
+            failedHopIncrement += 1
             continue
+        else:
+            # Reset failed hop count
+            failedHopIncrement = 0
 
         src = reply.fields["src"]
         type = reply[ICMP].type
@@ -117,6 +130,7 @@ def execute_traceroute(target):
             break
     return endpointList
 
+# Writes a list of Endpoint objects to the directory specified
 def write_obsidian_output(hops):
     # Construct obsidian web
     for i in range(0, len(hops)):
@@ -133,7 +147,9 @@ def write_obsidian_output(hops):
         if i < len(hops) - 1:
             upstreamEndpoint = hops[i+1]
 
-        print (e.ip)
+        # Debug outputs
+        if debugOutput:
+            print (e.ip)
 
         outputFile = Path(f"test/{e.ip} ({e.subnetOwner}).md")
         outputFile.parent.mkdir(parents=True, exist_ok=True)
@@ -164,19 +180,24 @@ class Endpoint:
     def subnetOwner(self):
         return self.subnetOwner
 
-def main():
-    print("")
-    print(f"! Initiating trace route to {target} !")
+def main(args:list):
+    ipList = args[1:]
+    if len(ipList) == 0:
+        ipList.append(defaultTarget)
 
-    print_host_information(target=target)
+    for target in ipList:
+        print("")
+        print(f"! Initiating trace route to {target} !")
 
-    endpointList = execute_traceroute(target=target)
+        print_host_information(target=target)
 
-    write_obsidian_output(endpointList)
+        endpointList = execute_traceroute(target=target)
+
+        write_obsidian_output(endpointList)
     
     
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
 
     # List packet variables/data
     #ls(packet)
