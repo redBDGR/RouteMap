@@ -6,10 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 
 # TO DO
-# Convert target IP to  binary representation (demonstration purposes only)
-# Conduct bgp.he.de IP looking for each hop/node
+# Create an Obsidian vault directory of all hops to visually display the route process and routing links
 
-target = "14.200.195.182"
+target = "192.124.249.168"
 maxTTL = 30
 debugOutput = False
 
@@ -30,7 +29,13 @@ def lookup_wansubnet_owner(target):
     
 if __name__ == "__main__":
     print("")
-    print(f"Tracing route to {target}")
+    print(f"! Tracing route to {target} !")
+
+    try:
+        gethostbyaddr(target)
+    except Exception as e:
+        print(e)
+        exit()
 
     if is_ip(target):
         print(gethostbyaddr(target))
