@@ -4,12 +4,13 @@ from socket import *
 import ipaddress
 import requests
 from bs4 import BeautifulSoup
+from pathlib import Path
 
 # TO DO
 # Create an Obsidian vault directory of all hops to visually display the route process and routing links
 
-target = "192.124.249.168"
-maxTTL = 30
+target = "65.9.142.57"
+maxTTL = 50
 debugOutput = False
 
 def is_ip(value):
@@ -27,37 +28,36 @@ def lookup_wansubnet_owner(target):
     except Exception as e:
         return None
 
-def main():
-    print("")
-    print(f"! Tracing route to {target} !")
-
+def print_host_information(target):
     try:
-        gethostbyaddr(target)
+        if is_ip(target):
+            print(gethostbyaddr(target))
+
+            # Print binary representation
+            # Constructs a list of 4x 8-bit octects (32-bit IPv4 address split)
+            binaryRep = []
+            for i in target.split(sep='.'):
+                binaryRep.append(f"{int(i):08b}")
+
+            # Rejoins octects and adds a . inbetween to visualise the data easier
+            print(f"Target IP binary representation (8-bit): {'.'.join(binaryRep)}")
+
+            # Conducts WAN IP subnet owner lookup using BGP.he.de IP web page scape
+            print(f"WAN IP owned by: {lookup_wansubnet_owner(target=target)}")
+        else:
+            print(gethostbyname(target))
+
     except Exception as e:
-        print(e)
-        exit()
+        print (f"Host information not found ({e})")
 
-    if is_ip(target):
-        print(gethostbyaddr(target))
+    return
 
-        # Print binary representation
-        # Constructs a list of 4x 8-bit octects (32-bit IPv4 address split)
-        binaryRep = []
-        for i in target.split(sep='.'):
-            binaryRep.append(f"{int(i):08b}")
-
-        # Rejoins octects and adds a . inbetween to visualise the data easier
-        print(f"Target IP binary representation (8-bit): {'.'.join(binaryRep)}")
-
-        # Conducts WAN IP subnet owner lookup using BGP.he.de IP web page scape
-        print(f"WAN IP owned by: {lookup_wansubnet_owner(target=target)}")
-
-    else:
-        print(gethostbyname(target))
-
+def execute_traceroute(target):
     print()
     print("---------------! ICMP TRACEROUTE !-----------------")
     print()
+
+    endpointList = []
 
     for i in range(0, maxTTL):
 
@@ -93,22 +93,87 @@ def main():
 
         # Attempt WAN subnet owner resolution
         srcExpansion = ""
+        owner = ""
         try:
             if (not ipaddress.ip_address(src).is_private):
                 owner = lookup_wansubnet_owner(src)
                 if owner != None:
                     srcExpansion = f" | {owner}"
+                else:
+                    owner = "Unknown"
         except:
             srcExpansion = ""
 
         # Print trace route entry
         print (f"HOP: {i} | SRC: {src} {srcExpansion} | TYPE: {type}")
 
+        # Add hop to indexing list
+        endpointList.append(Endpoint(src, owner))
+
         if (type == 0):
             print()
             print("---------------------------------------------------")
             print()
             break
+    return endpointList
+
+def write_obsidian_output(hops):
+    # Construct obsidian web
+    for i in range(0, len(hops)):
+        e = hops[i]
+
+        downstreamEndpoint = None
+        upstreamEndpoint = None
+
+        # Find previous hop
+        if i > 0:
+            downstreamEndpoint = hops[i-1]
+
+        # Find next hop
+        if i < len(hops) - 1:
+            upstreamEndpoint = hops[i+1]
+
+        print (e.ip)
+
+        outputFile = Path(f"test/{e.ip} ({e.subnetOwner}).md")
+        outputFile.parent.mkdir(parents=True, exist_ok=True)
+
+        with outputFile.open("a+") as file:
+            if upstreamEndpoint != None:
+                writeString = f"Upstream: [[{upstreamEndpoint.ip} ({upstreamEndpoint.subnetOwner})]]"
+
+                # Check if upstream has already been written to this file before
+                if writeString not in file.read():
+                    file.write(f"{writeString}\n")
+
+            if downstreamEndpoint != None:
+                writeString = f"Downstream: [[{downstreamEndpoint.ip} ({downstreamEndpoint.subnetOwner})]]"
+
+                # Check if downstream has already been written to this file before
+                if writeString not in file.read():
+                    file.write(f"{writeString}\n")    
+
+class Endpoint:
+    def __init__(self, ip, subnetOwner):
+        self.ip = ip
+        self.subnetOwner = subnetOwner
+
+    def ip(self):
+        return self.ip
+
+    def subnetOwner(self):
+        return self.subnetOwner
+
+def main():
+    print("")
+    print(f"! Initiating trace route to {target} !")
+
+    print_host_information(target=target)
+
+    endpointList = execute_traceroute(target=target)
+
+    write_obsidian_output(endpointList)
+    
     
 if __name__ == "__main__":
     main()
