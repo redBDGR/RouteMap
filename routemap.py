@@ -8,9 +8,8 @@ from pathlib import Path
 import sys
 
 # TO DO
-# Create an Obsidian vault directory of all hops to visually display the route process and routing links
 
-defaultTarget = "59.154.68.146"
+defaultTarget = "1.1.1.1"
 maxTTL = 50
 debugOutput = False
 
